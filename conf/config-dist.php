@@ -41,9 +41,9 @@ $CFG = new stdClass();
 $CFG->dbtype    = 'mariadb';      // 'pgsql', 'mariadb', 'mysqli', 'sqlsrv' or 'oci'
 $CFG->dblibrary = 'native';     // 'native' only at the moment
 $CFG->dbhost    = 'localhost';  // eg 'localhost' or 'db.isp.com' or IP
-$CFG->dbname    = 'YNH_DB_USER';     // database name, eg moodle
-$CFG->dbuser    = 'YNH_APP';   // your database username
-$CFG->dbpass    = 'YNH_DB_PWD';   // your database password
+$CFG->dbname    = 'yunobase';     // database name, eg moodle
+$CFG->dbuser    = 'yunouser';   // your database username
+$CFG->dbpass    = 'yunopass';   // your database password
 $CFG->prefix    = 'mdl_';       // prefix to use for all table names
 $CFG->dboptions = array(
     'dbpersist' => false,       // should persistent database connections be
@@ -93,7 +93,7 @@ $CFG->dboptions = array(
 // If you need both intranet and Internet access please read
 // http://docs.moodle.org/en/masquerading
 
-$CFG->wwwroot   = 'https://YNH_DOMAINYNH_WWW_PATH';
+$CFG->wwwroot   = 'https://yunodomainYNH_WWW_PATH';
 
 
 //=========================================================================
