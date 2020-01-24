@@ -7,7 +7,6 @@
 #=================================================
 
 source _common.sh
-source psql.sh
 source ynh_install_php
 source ynh_add_extra_apt_repos
 source /usr/share/yunohost/helpers
@@ -76,20 +75,24 @@ ynh_app_setting_set "$app" is_public "$is_public"
 ynh_print_info --message="Installing php7.1..."
 
 ynh_install_php --phpversion="7.1" --package="$extra_pkg_dependencies"
-ynh_install_app_dependencies postgresql
 
 #=================================================
-# Create postgresql database
+# CREATE A MYSQL DATABASE
 #=================================================
+ynh_print_info "Creating a MySQL database..."
 
-db_name=$app
-db_pwd=$(ynh_string_random 30)
-ynh_app_setting_set "$app" psql_db "$db_name"
-ynh_app_setting_set "$app" psqlpwd "$db_pwd"
-ynh_psql_test_if_first_run
-ynh_psql_create_user "$app" "$db_pwd"
-ynh_psql_execute_as_root \
-"CREATE DATABASE $db_name ENCODING 'UTF8' LC_COLLATE='C' LC_CTYPE='C' template=template0 OWNER $app;"
+### Use these lines if you need a database for the application.
+### `ynh_mysql_setup_db` will create a database, an associated user and a ramdom password.
+### The password will be stored as 'mysqlpwd' into the app settings,
+### and will be available as $db_pwd
+### If you're not using these lines:
+###		- Remove the section "BACKUP THE MYSQL DATABASE" in the backup script
+###		- Remove also the section "REMOVE THE MYSQL DATABASE" in the remove script
+###		- As well as the section "RESTORE THE MYSQL DATABASE" in the restore script
+
+db_name=$(ynh_sanitize_dbid $app)
+ynh_app_setting_set $app db_name $db_name
+ynh_mysql_setup_db $db_name $db_name
 #=================================================
 # DOWNLOAD, CHECK AND UNPACK SOURCE
 #=================================================
@@ -97,7 +100,7 @@ ynh_psql_execute_as_root \
 ynh_app_setting_set "$app" final_path "$final_path"
 # Download, check integrity, uncompress and patch the source from app.src
 ynh_setup_source "$final_path"
-cp  ../conf/config.php "$final_path"/.
+cp -a ../conf/config-dist.php "$final_path"/config.php.
 
 #=================================================
 # NGINX CONFIGURATION
@@ -137,10 +140,10 @@ ynh_add_fpm_config --phpversion="7.1"
 # SETUP config file
 #=================================================
 var_root=/home/yunohost.app/$app
-ynh_replace_string "YNH_DB_USER" "$app" "$final_path/config.php"
-ynh_replace_string "YNH_APP" "$db_name" "$final_path/config.php"
-ynh_replace_string "YNH_DB_PWD" "$db_pwd" "$final_path/config.php"
-ynh_replace_string "YNH_DOMAIN" "$domain" "$final_path/config.php"
+ynh_replace_string "yunouser"   "$db_name"    "$final_path/config.php"
+ynh_replace_string "yunopass"   "$db_pwd"     "$final_path/config.php"
+ynh_replace_string "yunobase"   "$db_name"    "$final_path/config.php"
+ynh_replace_string "yunodomain" "$domain"     "$final_path/config.php"
 if [ "$path_url" = "/" ]
 then
 	ynh_replace_string "YNH_WWW_PATH" "" "$final_path/config.php"
@@ -174,6 +177,7 @@ systemctl reload nginx
 #=================================================
 
 # Set permissions to app files
+rm -f "$final_path"/config-dist.php
 chown  root: "$final_path"/config.php
 
 
