@@ -72,9 +72,10 @@ ynh_app_setting_set "$app" is_public "$is_public"
 #=================================================
 # INSTALL PHP7.3 AND DEPENDENCIES (EXP HELPER)
 #=================================================
-ynh_print_info --message="Installing php7.4..."
 
-ynh_install_app_dependencies php7.4-zip php7.4-mysql php7.4-xml php7.4-intl php7.4-mbstring php7.4-gd php7.0-curl php7.4-soap php7.4-xmlrpc
+ynh_print_info --message="Installing php7.1..."
+
+ynh_install_php --phpversion="7.1" --package="$extra_pkg_dependencies"
 
 #=================================================
 # CREATE A MYSQL DATABASE
