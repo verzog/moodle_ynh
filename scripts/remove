@@ -84,6 +84,8 @@ ynh_remove_nginx_config
 
 # Remove the dedicated php-fpm config
 ynh_remove_fpm_config
+rm -f /etc/php/7.1/fpm/pool.d/moodle.conf
+rm -f /etc/php/7.1/fpm/conf.d/20-moodle.ini 
 
 #=================================================
 # REMOVE LOGROTATE CONFIGURATION
