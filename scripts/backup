@@ -7,7 +7,6 @@
 #=================================================
 
 source _common.sh
-source psql.sh
 source /usr/share/yunohost/helpers
 
 #=================================================
@@ -58,7 +57,7 @@ ynh_backup "/etc/php5/fpm/conf.d/20-$app.ini"
 # BACKUP THE PSQL DATABASE
 #=================================================
 
-ynh_psql_dump_db "$db_name" > db.sql
+ynh_sql_dump_db "$db_name" > db.sql
 ynh_backup "db.sql"
 
 #=================================================
