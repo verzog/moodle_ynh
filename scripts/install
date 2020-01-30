@@ -161,14 +161,21 @@ mkdir -p "$var_root"
 chown -R "$app": "$var_root"
 chmod -R 700 "$var_root"
 
+# Add mysql configuration
+cp -a /etc/mysql/mariadb.cnf /etc/mysql/mariadb.cnf.backup
+cp -a /etc/mysql/my.cnf /etc/mysql/my.cnf.backup
+cp -a ../conf/mariadb.cnf /etc/mysql/mariadb.cnf
+chown root: /etc/mysql/mariadb.cnf
+systemctl restart mariadb
+systemctl restart mysql
+#sudo -u moodle php "$final_path/admin/cli/mysql_collation.php --collation=utf8mb4_unicode_ci"
+
 #=================================================
 # SETUP APPLICATION WITH CURL
 #=================================================
 
 # Set right permissions for curl install
 chown -R "$app": "$final_path"
-
-#sudo -u moodle php "$final_path/admin/cli/mysql_collation.php --collation=utf8mb4_unicode_ci"
 
 # Reload Nginx
 systemctl reload nginx
