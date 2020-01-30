@@ -167,6 +167,8 @@ chmod -R 700 "$var_root"
 # Set right permissions for curl install
 chown -R "$app": "$final_path"
 
+sudo -u moodle php admin/cli/mysql_collation.php --collation=utf8mb4_unicode_ci
+
 # Reload Nginx
 systemctl reload nginx
 
