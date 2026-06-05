@@ -34,6 +34,6 @@ The YunoHost admin panel exposes the following settings under **Apps → Moodle 
 | PHP memory limit | 256M | Per PHP-FPM worker |
 | PHP max execution time | 300s | Increase for large course restores |
 | PHP max input vars | 5000 | Moodle minimum is 5000 |
-| Cron interval | 15 min | How often background tasks run |
+| Cron interval | 15 min | How often background tasks run (1, 2, 5, 10, 15, or 30 minutes) |
 
 Changes take effect immediately — php-fpm and nginx are reloaded automatically.
