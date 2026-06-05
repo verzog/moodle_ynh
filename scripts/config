@@ -65,6 +65,14 @@ set__cron_interval() {
 #=================================================
 
 ynh_app_config_apply() {
+    # Run the framework's default apply first: this validates the form values,
+    # invokes the set__* functions and persists the new settings. Without this
+    # call the setters never run, so nothing is saved and the panel keeps
+    # showing the old values.
+    _ynh_app_config_apply
+
+    # Regenerate the configs that depend on the settings, using the freshly
+    # saved values, then reload the affected services.
     ynh_config_add_phpfpm
     ynh_config_add --template="cron" --destination="/etc/cron.d/$app"
     ynh_config_add_nginx
