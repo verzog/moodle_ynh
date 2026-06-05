@@ -65,11 +65,7 @@ jobs:
           NEW_MAJOR=$(echo "$NEW" | cut -d. -f1)
           NEW_MINOR=$(echo "$NEW" | cut -d. -f2)
 
-          gh issue create \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "New Moodle series available: ${NEW}" \
-            --label "upgrade" \
-            --body "## New Moodle series: ${NEW}.x
+          BODY="## New Moodle series: ${NEW}.x
 
           The auto-update workflow tracks patch releases within the **${CURRENT}.x** series only.
           Moodle **${NEW}.x** is now available and requires a deliberate upgrade decision.
@@ -84,3 +80,21 @@ jobs:
           1. Update \`manifest.toml\` — change \`version\` to \`${NEW}.0~ynh1\` and update the download URL + SHA256
           2. The auto-update workflow will then track \`${NEW}.x\` patch releases automatically
           3. Run \`yunohost app upgrade moodle -u \"https://github.com/verzog/moodle_ynh\"\`"
+
+          # Try to open an issue; if Issues are disabled on the repo, fall back
+          # to the Actions run summary so the notification is never lost.
+          if ! gh issue create \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "New Moodle series available: ${NEW}" \
+              --label "upgrade" \
+              --body "$BODY" 2>/tmp/gh_err; then
+            echo "::warning::Could not create an issue (Issues may be disabled). Writing notification to the run summary instead."
+            cat /tmp/gh_err
+            {
+              echo "# ⚠️ New Moodle series available: ${NEW}"
+              echo ""
+              echo "$BODY"
+              echo ""
+              echo "_Enable Issues in the repository settings to receive these as GitHub issues._"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
