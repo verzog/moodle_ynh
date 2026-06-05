@@ -74,7 +74,8 @@ ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='locked' WHERE
 
 ynh_psql_db_shell <<< "UPDATE public.mdl_user SET auth='ldap' WHERE username='$admin';"
 
-php$php_version "$install_dir/admin/cli/purge_caches.php"
+env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    php${php_version} "$install_dir/admin/cli/purge_caches.php"
 
 #=================================================
 # END OF SCRIPT
