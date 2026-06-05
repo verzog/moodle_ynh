@@ -64,7 +64,7 @@ set__cron_interval() {
 # APPLY — rebuild configs after any change
 #=================================================
 
-apply() {
+ynh_app_config_apply() {
     ynh_config_add_phpfpm
     ynh_config_add --template="cron" --destination="/etc/cron.d/$app"
     ynh_config_add_nginx
@@ -72,3 +72,5 @@ apply() {
     ynh_systemctl --service="php${php_version}-fpm" --action=reload
     ynh_systemctl --service=nginx --action=reload
 }
+
+ynh_app_config_run $1
