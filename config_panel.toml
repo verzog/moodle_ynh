@@ -38,6 +38,6 @@ name = "Moodle settings"
         [main.cron.cron_interval]
         ask = "Cron interval (minutes)"
         type = "select"
-        choices = ["5", "10", "15", "30"]
+        choices = ["1", "2", "5", "10", "15", "30"]
         default = "15"
         help = "How often the Moodle background task scheduler runs. 15 minutes is the upstream default; lower values improve task responsiveness at the cost of slightly more CPU."
