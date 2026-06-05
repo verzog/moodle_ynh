@@ -15,10 +15,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install YunoHost apps tools
-        run: |
-          pip install yunohost-apps-tools
-
       - name: Fetch latest stable Moodle tag
         id: latest
         run: |
