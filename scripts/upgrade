@@ -64,9 +64,11 @@ ynh_psql_db_shell <<< "UPDATE public.mdl_user SET auth='ldap' WHERE username='$a
 #=================================================
 ynh_script_progression "Running Moodle database migrations..."
 
-php${php_version} -d max_input_vars=5000 "$install_dir/admin/cli/upgrade.php" --non-interactive
+env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    php${php_version} -d max_input_vars=5000 "$install_dir/admin/cli/upgrade.php" --non-interactive
 
-php${php_version} "$install_dir/admin/cli/purge_caches.php"
+env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    php${php_version} "$install_dir/admin/cli/purge_caches.php"
 
 #=================================================
 # END OF SCRIPT
