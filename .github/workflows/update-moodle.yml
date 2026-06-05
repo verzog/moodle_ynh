@@ -21,10 +21,13 @@ jobs:
       - name: Fetch latest stable Moodle tag
         id: latest
         run: |
-          # Get the latest tag matching vX.Y.Z (excludes RC, beta, weekly builds)
+          # Track only the current supported minor series (5.1.x).
+          # Moodle 5.2+ requires PostgreSQL 16 which YunoHost does not support upgrading.
+          # Update TRACK_SERIES below when PostgreSQL 16 becomes available on YunoHost.
+          TRACK_SERIES="5.1"
           LATEST=$(curl -s https://api.github.com/repos/moodle/moodle/tags \
             | jq -r '.[].name' \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | grep -E "^v${TRACK_SERIES//./\\.}\\.[0-9]+$" \
             | sort -V \
             | tail -1)
           echo "tag=$LATEST" >> "$GITHUB_OUTPUT"
