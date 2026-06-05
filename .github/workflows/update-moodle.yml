@@ -53,8 +53,12 @@ jobs:
         run: |
           TAG="${{ steps.latest.outputs.tag }}"
           URL="https://github.com/moodle/moodle/archive/refs/tags/${TAG}.tar.gz"
-          curl -sL "$URL" -o moodle.tar.gz
-          SHA=$(sha256sum moodle.tar.gz | cut -d' ' -f1)
+          # Download to a temp path outside the working tree so the tarball
+          # is never picked up by the create-pull-request commit.
+          TARBALL="$(mktemp)"
+          curl -sL "$URL" -o "$TARBALL"
+          SHA=$(sha256sum "$TARBALL" | cut -d' ' -f1)
+          rm -f "$TARBALL"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
 
