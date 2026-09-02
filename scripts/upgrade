@@ -69,9 +69,10 @@ fi
 # reconcile branch instead of re-running the transfer, so the already-populated
 # MariaDB database is never wiped.
 
-# Only disabled again at the end of the script if *we* enabled it here, so an
-# administrator's pre-existing maintenance mode is preserved.
-maintenance_toggled_by_upgrade=0
+# Set when this run performs (or finishes) the migration, so the end of the
+# script knows to lift maintenance mode. Non-migration upgrades leave it 0 and
+# never touch maintenance at all.
+migration_performed=0
 
 if [ "$database" == "postgresql" ] && grep -qE "dbtype[[:space:]]*=[[:space:]]*'mariadb'" "$install_dir/config.php" 2>/dev/null; then
     # A previous interrupted run already transferred the data and switched
@@ -87,6 +88,7 @@ if [ "$database" == "postgresql" ] && grep -qE "dbtype[[:space:]]*=[[:space:]]*'
 
     database="mariadb"
     ynh_app_setting_set --key=database --value="mariadb"
+    migration_performed=1
 
 elif [ "$database" == "postgresql" ] && ynh_psql_database_exists "$db_name"; then
     ynh_script_progression "Migrating the database from PostgreSQL to MariaDB..."
@@ -101,14 +103,13 @@ elif [ "$database" == "postgresql" ] && ynh_psql_database_exists "$db_name"; the
     ynh_safe_rm "/etc/cron.d/$app"
 
     # Put the site in maintenance mode during the transfer (old code, still on
-    # PostgreSQL). Record whether it was already on (either the maintenance_enabled
-    # config flag or the legacy climaintenance.html file) so we don't clobber an
-    # administrator's pre-existing maintenance state at the end of the script.
-    maintenance_prior=$(sudo --login --user=postgres psql -tAc "SELECT value FROM public.mdl_config WHERE name='maintenance_enabled'" "$db_name" 2>/dev/null | tr -d '[:space:]')
-    if { [ -z "$maintenance_prior" ] || [ "$maintenance_prior" == "0" ]; } && [ ! -f "$data_dir/climaintenance.html" ]; then
-        php${php_version} "$install_dir/admin/cli/maintenance.php" --enable
-        maintenance_toggled_by_upgrade=1
-    fi
+    # PostgreSQL). The migration path always lifts maintenance again at the end,
+    # so the site comes back up once the upgrade succeeds. (We deliberately do
+    # NOT try to detect/preserve a pre-existing maintenance state here: a failed
+    # first attempt can leave the flag on, and preserving it would strand the
+    # site in maintenance after a successful retry.)
+    php${php_version} "$install_dir/admin/cli/maintenance.php" --enable
+    migration_performed=1
 
     # Reset the target to a clean, empty utf8mb4 database. The resource created
     # it with the server default charset, and dbtransfer refuses a non-empty
@@ -201,10 +202,11 @@ env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/
 env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     php${php_version} "$install_dir/admin/cli/purge_caches.php"
 
-# Lift maintenance mode only if the migration block above turned it on, so an
-# administrator who intentionally enabled maintenance before upgrading (or a
-# non-migration upgrade that never touched it) keeps their chosen state.
-if [ "${maintenance_toggled_by_upgrade:-0}" == "1" ]; then
+# Lift maintenance mode after a migration so the site comes back up. Only the
+# migration path sets this flag, so non-migration upgrades never touch
+# maintenance (an admin's chosen state is preserved for those). --disable is
+# idempotent and also clears the legacy climaintenance.html file.
+if [ "${migration_performed:-0}" == "1" ]; then
     php${php_version} "$install_dir/admin/cli/maintenance.php" --disable
 fi
 
