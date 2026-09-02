@@ -75,7 +75,7 @@ jobs:
           Moodle **${NEW}.x** is now available and requires a deliberate upgrade decision.
 
           ### Before upgrading, check:
-          - [ ] PostgreSQL version requirement for Moodle ${NEW}.x (may require PG 16+)
+          - [ ] MariaDB version requirement for Moodle ${NEW}.x (currently MariaDB >= 10.6.7)
           - [ ] PHP version requirement
           - [ ] Release notes: https://moodledev.io/general/releases/${NEW_MAJOR}.${NEW_MINOR}
           - [ ] YunoHost compatibility

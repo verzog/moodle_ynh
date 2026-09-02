@@ -73,7 +73,26 @@ ram.runtime = "50M"
     main.url = "/"
 
     [resources.apt]
-    packages = "postgresql, php8.3-mbstring, php8.3-curl, php8.3-xmlrpc, php8.3-soap, php8.3-zip, php8.3-gd php8.3-xml, php8.3-intl, php8.3-pgsql, php8.3-ldap"
+    packages = "php8.3-mbstring, php8.3-curl, php8.3-xmlrpc, php8.3-soap, php8.3-zip, php8.3-gd, php8.3-xml, php8.3-intl, php8.3-mysql, php8.3-ldap"
+    # PostgreSQL is no longer the database backend (the package now uses MariaDB).
+    # It is only (re)installed transiently on servers still holding a legacy
+    # PostgreSQL database, so that scripts/upgrade can read it and transfer the
+    # data to MariaDB. Once the migration has run and the old PostgreSQL database
+    # has been dropped, the next upgrade no longer lists these packages and APT
+    # autoremoves them. Fresh installs never pull PostgreSQL in.
+    packages_from_raw_bash = """
+if command -v psql >/dev/null 2>&1; then
+    legacy_db_name="${db_name:-$(echo "$app" | tr '.-' '__')}"
+    if sudo --login --user=postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${legacy_db_name}'" 2>/dev/null | grep -q 1; then
+        echo "postgresql"
+        echo "php8.3-pgsql"
+    fi
+fi
+"""
 
     [resources.database]
-    type = "postgresql"
+    # Changing the type from "postgresql" to "mysql" (MariaDB) is applied as a
+    # resource "update", not a "deprovision": YunoHost provisions the new MariaDB
+    # database but never drops the existing PostgreSQL one. The actual data move
+    # is handled explicitly by scripts/upgrade (see the migration block).
+    type = "mysql"
