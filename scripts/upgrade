@@ -95,6 +95,29 @@ if [ "$database" == "postgresql" ] && grep -qE "dbtype[[:space:]]*=[[:space:]]*'
 elif [ "$database" == "postgresql" ] && ynh_psql_database_exists "$db_name"; then
     ynh_script_progression "Migrating the database from PostgreSQL to MariaDB..."
 
+    # Pre-flight: tool_dbtransfer refuses a database whose schema does not match
+    # the installed plugins' install.xml — most commonly orphaned tables left by
+    # a plugin whose code was deleted from disk instead of uninstalled. Detect
+    # that here, BEFORE touching anything (no dump, no maintenance, no copy),
+    # using Moodle's own checker, which uses the very same "not expected" logic
+    # tool_dbtransfer does. This turns a mid-migration failure into a clear,
+    # up-front checklist. Runs against the still-PostgreSQL source (old code,
+    # original config.php), so it sees exactly what the transfer will.
+    schema_issues=$(env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        php${php_version} "$install_dir/admin/cli/check_database_schema.php" 2>&1 | grep -iE "not expected" || true)
+    if [ -n "$schema_issues" ]; then
+        ynh_die "Cannot migrate to MariaDB: the database contains tables/columns that no installed plugin declares (tool_dbtransfer requires a schema that matches install.xml). Nothing has been changed. Offending items:
+${schema_issues}
+
+Resolve each, then re-run the upgrade:
+ - If you STILL USE the plugin, restore/reinstall its code so its tables are declared again, then run:
+     php${php_version} ${install_dir}/admin/cli/upgrade.php --non-interactive
+ - If it is ABANDONED, uninstall it cleanly (drops its tables). Review first, then:
+     php${php_version} ${install_dir}/admin/cli/uninstall_plugins.php --show-missing
+     php${php_version} ${install_dir}/admin/cli/uninstall_plugins.php --purge-missing --run
+See doc/migration-spike/MIGRATION_SPIKE.md for details."
+    fi
+
     # Safety net: keep a PostgreSQL dump in the data dir (included in backups).
     ynh_psql_dump_db "$db_name" > "$data_dir/pre-mariadb-migration.pgsql.sql"
 
