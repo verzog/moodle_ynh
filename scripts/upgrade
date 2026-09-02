@@ -140,6 +140,10 @@ elif [ "$database" == "postgresql" ] && ynh_psql_database_exists "$db_name"; the
 
     # Point Moodle at MariaDB by regenerating config.php from the template. From
     # this point a resumed run takes the reconcile branch above (never the reset).
+    # config.php contains PHP's __DIR__ constant; ynh_config_add treats __DIR__ as
+    # a placeholder, so define $dir="__DIR__" to substitute it back to itself
+    # (same workaround as scripts/change_url).
+    dir="__DIR__"
     if [ "${path:-/}" == "/" ]; then
         ynh_config_add --template="config-domain.php" --destination="$install_dir/config.php"
     else
