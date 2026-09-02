@@ -131,6 +131,41 @@ table and key row counts (PostgreSQL vs. MariaDB), then drops the throwaway DB.
 > real upgrade gets it from the apt resource before `scripts/upgrade` runs, so
 > the live migration always has the driver.
 
+### Prerequisite: the database schema must match `install.xml`
+
+`tool_dbtransfer` refuses to run unless every table in the database is declared
+by some installed component's `install.xml`. On long-lived sites this commonly
+fails with:
+
+```
+Current database structure does not match all install.xml files.
+Table local_xxx_yyy: table is not expected
+```
+
+These are **orphaned tables** — left behind by a plugin whose code was deleted
+from disk instead of being uninstalled through Moodle. The migration (and this
+evaluator) cannot proceed until they are resolved. This is enforced by
+`tool_dbtransfer`, not by this package, and the real upgrade fails safe on it
+(aborts before switching `config.php` or dropping PostgreSQL).
+
+Resolve it before migrating:
+
+```bash
+# List plugins whose code is missing but whose tables remain:
+sudo -u <app-user> php<ver> <install_dir>/admin/cli/uninstall_plugins.php --show-missing
+```
+
+- **Keep the plugin/data** → restore the plugin's code under
+  `<install_dir>/<type>/<name>`, then
+  `php<ver> <install_dir>/admin/cli/upgrade.php --non-interactive` so its tables
+  are declared again.
+- **Discard it** → back the tables up first
+  (`pg_dump -t 'public.mdl_<plugin>*' <db>`), then
+  `uninstall_plugins.php --purge-missing --run` (or
+  `--plugins=<frankenstyle> --run` to target one). `--run` is irreversible.
+
+Then re-run the evaluator.
+
 Recommended validation checklist:
 1. Run the evaluator; confirm table counts match and key tables
    (`mdl_user`, `mdl_course`, `mdl_config`) have equal row counts.
