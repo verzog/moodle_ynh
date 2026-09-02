@@ -21,11 +21,20 @@ ynh_script_progression "Restoring the data directory..."
 ynh_restore "$data_dir"
 
 #=================================================
-# RESTORE THE POSTGRESQL DATABASE
+# RESTORE THE DATABASE
 #=================================================
-ynh_script_progression "Restoring the PostgreSQL database..."
 
-ynh_psql_db_shell < ./db.sql
+# Backups taken with this (MariaDB) version of the package carry
+# database=mariadb and a MariaDB dump. Older backups predate the `database`
+# setting and hold a PostgreSQL dump — those cannot be injected into the MariaDB
+# database provisioned here, so fail early with an actionable message rather than
+# producing a broken instance.
+if [ "${database:-postgresql}" == "mariadb" ]; then
+    ynh_script_progression "Restoring the MariaDB database..."
+    ynh_mysql_db_shell "$db_name" < ./db.sql
+else
+    ynh_die "This backup was created with a PostgreSQL-based version of the Moodle package. Restore it on a package version that still uses PostgreSQL (<= 5.1.5~ynh1), then upgrade to migrate it to MariaDB."
+fi
 
 #=================================================
 # RESTORE SYSTEM CONFIGURATIONS

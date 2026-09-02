@@ -18,6 +18,23 @@ ynh_config_remove_phpfpm
 ynh_safe_rm "/etc/cron.d/$app"
 
 #=================================================
+# DROP ANY LEFTOVER LEGACY POSTGRESQL DATABASE
+#=================================================
+
+# The MariaDB database is dropped automatically by the "database" resource.
+# A legacy PostgreSQL database only remains if a previous PostgreSQL -> MariaDB
+# migration did not complete; clean it up here so nothing is orphaned.
+if command -v psql >/dev/null 2>&1; then
+    if ynh_psql_database_exists "$db_name"; then
+        ynh_script_progression "Removing leftover legacy PostgreSQL database..."
+        ynh_psql_drop_db "$db_name"
+    fi
+    if ynh_psql_user_exists "$db_user"; then
+        ynh_psql_drop_user "$db_user"
+    fi
+fi
+
+#=================================================
 # END OF SCRIPT
 #=================================================
 

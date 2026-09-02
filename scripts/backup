@@ -37,11 +37,18 @@ ynh_backup "/etc/nginx/conf.d/$domain.d/$app.conf"
 ynh_backup "/etc/cron.d/$app"
 
 #=================================================
-# BACKUP THE POSTGRESQL DATABASE
+# BACKUP THE DATABASE
 #=================================================
-ynh_print_info "Backing up the PostgreSQL database..."
 
-ynh_psql_dump_db > db.sql
+# A legacy PostgreSQL instance that has not yet been migrated to MariaDB is
+# dumped from PostgreSQL; every other (migrated or fresh) instance from MariaDB.
+if [ "${database:-mariadb}" == "postgresql" ]; then
+    ynh_print_info "Backing up the PostgreSQL database..."
+    ynh_psql_dump_db > db.sql
+else
+    ynh_print_info "Backing up the MariaDB database..."
+    ynh_mysql_dump_db > db.sql
+fi
 
 #=================================================
 # END OF SCRIPT
