@@ -56,6 +56,18 @@ if ! grep -qE "dbtype\s*=\s*'pgsql'" "$CONFIG_PHP"; then
     exit 1
 fi
 
+# --- Ensure the MySQLi PHP driver is present ---------------------------------
+# A PostgreSQL-era install ships php-pgsql but usually not php-mysql, yet the
+# transfer must connect to MariaDB via mysqli. The real upgrade pulls this in
+# via the apt resource before scripts/upgrade runs; mirror that here so the dry
+# run doesn't fail at "database driver problem detected". This only adds a PHP
+# module — no database or site data is touched.
+if ! "php${PHP_VERSION}" -m 2>/dev/null | grep -qi '^mysqli$'; then
+    echo "==> php${PHP_VERSION}-mysql (MySQLi) not found — installing it (additive; no data touched)"
+    apt-get install -y "php${PHP_VERSION}-mysql" >/dev/null \
+        || { echo "Could not install php${PHP_VERSION}-mysql automatically. Install it manually and re-run." >&2; exit 1; }
+fi
+
 # --- Create a throwaway MariaDB target ---------------------------------------
 TEST_DB="${DB_NAME}_migtest"
 TEST_USER="${DB_NAME}_migtest"
