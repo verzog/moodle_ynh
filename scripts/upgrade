@@ -36,8 +36,10 @@ ynh_script_progression "Checking system requirements..."
 
 # The package now uses MariaDB (the migration below moves any legacy PostgreSQL
 # instance onto it), so ensure MariaDB is recent enough for this Moodle release.
-# Moodle 4.1+ / 5.x require MariaDB >= 10.6.7.
-required_maria="10.6.7"
+# Moodle 5.1 requires MariaDB >= 10.11.0 (Moodle reports this in Site admin >
+# Server > Environment). Bump this when a newer Moodle raises the requirement.
+# Debian 12 / YunoHost 12 ship MariaDB 10.11, so this passes on a stock server.
+required_maria="10.11.0"
 maria_version=$(mysql -B <<< "SELECT VERSION();" | tail -n1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 if [ -z "$maria_version" ] || [ "$(printf '%s\n%s\n' "$required_maria" "$maria_version" | sort -V | head -n1)" != "$required_maria" ]; then
     ynh_die "This Moodle version requires MariaDB ${required_maria}+, but this server runs MariaDB ${maria_version:-unknown}."
