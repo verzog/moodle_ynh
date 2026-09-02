@@ -125,6 +125,12 @@ It copies the live PostgreSQL data into a **throwaway** MariaDB database, prints
 table and key row counts (PostgreSQL vs. MariaDB), then drops the throwaway DB.
 `config.php` and the live databases are never modified.
 
+> A PostgreSQL-era install ships `php-pgsql` but not `php-mysql`, so the MariaDB
+> (MySQLi) driver is missing until the real upgrade installs it. The evaluator
+> installs `php{ver}-mysql` itself if absent (additive; no data touched). The
+> real upgrade gets it from the apt resource before `scripts/upgrade` runs, so
+> the live migration always has the driver.
+
 Recommended validation checklist:
 1. Run the evaluator; confirm table counts match and key tables
    (`mdl_user`, `mdl_course`, `mdl_config`) have equal row counts.
