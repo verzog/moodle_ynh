@@ -58,7 +58,7 @@ ram.runtime = "50M"
 
     [resources.sources.main]
     url = "https://github.com/moodle/moodle/archive/refs/tags/v5.2.2.tar.gz"
-    sha256 = "b3e03aaaff81d68730d67392a135ac3fdfdf022880c66632ab188d2fe084cda3"
+    sha256 = "3943b308080e41b249033c924d8e3dc2c58b39ed7b8030375a151607cc491094"
     autoupdate.strategy = "latest_github_tag"
     autoupdate.version_regex = "^v(\\d+\\.\\d+\\.\\d+)$"
 
