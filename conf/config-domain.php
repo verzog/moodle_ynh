@@ -4,7 +4,7 @@ unset($CFG);
 global $CFG;
 $CFG = new stdClass();
 
-$CFG->dbtype    = 'pgsql';
+$CFG->dbtype    = 'mariadb';
 $CFG->dblibrary = 'native';
 $CFG->dbhost    = 'localhost';
 $CFG->dbname    = '__DB_NAME__';
@@ -12,9 +12,10 @@ $CFG->dbuser    = '__DB_USER__';
 $CFG->dbpass    = '__DB_PWD__';
 $CFG->prefix    = 'mdl_';
 $CFG->dboptions = array(
-    'dbpersist' => 0,
-    'dbsocket'  => '',
-    'dbport'    => '',
+    'dbpersist'   => 0,
+    'dbsocket'    => '',
+    'dbport'      => '',
+    'dbcollation' => 'utf8mb4_unicode_ci',
 );
 
 $CFG->wwwroot   = 'https://__DOMAIN__';

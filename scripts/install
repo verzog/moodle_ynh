@@ -4,6 +4,7 @@
 # IMPORT GENERIC HELPERS
 #=================================================
 
+source _common.sh
 source /usr/share/yunohost/helpers
 
 #=================================================
@@ -20,6 +21,11 @@ ynh_app_setting_set --key=php_memory_limit --value="$php_memory_limit"
 ynh_app_setting_set --key=php_max_execution_time --value="$php_max_execution_time"
 ynh_app_setting_set --key=php_max_input_vars --value="$php_max_input_vars"
 ynh_app_setting_set --key=cron_interval --value="$cron_interval"
+
+# Record which database backend this instance uses. Fresh installs are MariaDB;
+# the value is read by upgrade/backup/restore/remove to branch correctly and to
+# know whether a legacy PostgreSQL -> MariaDB migration is still pending.
+ynh_app_setting_set --key=database --value="mariadb"
 
 email=$(ynh_user_get_info --username=$admin --key=mail)
 password=$(ynh_string_random --length=30)
@@ -50,7 +56,13 @@ ynh_config_add --template="cron" --destination="/etc/cron.d/$app"
 #=================================================
 ynh_script_progression "Setting up the application..."
 
-php${php_version} -d max_input_vars=5000 "$install_dir/admin/cli/install.php" --wwwroot="https://${domain}${path%/}" --dataroot="$data_dir" --dbtype='pgsql' --dbname="$db_name" --dbuser="$db_name" --dbpass="$db_pwd" --adminuser="$admin" --adminpass="$password" --adminemail="$email" --fullname="$site_name" --shortname="$site_name" --non-interactive --agree-license
+# Moodle on MySQL/MariaDB requires a utf8mb4 database (full Unicode support and
+# Barracuda/DYNAMIC row format). The database resource creates the DB with the
+# server default charset, so enforce utf8mb4 before Moodle creates its tables:
+# newly created tables inherit the database's default character set.
+ynh_mysql_db_shell "$db_name" <<< "ALTER DATABASE \`$db_name\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+php${php_version} -d max_input_vars=5000 "$install_dir/admin/cli/install.php" --wwwroot="https://${domain}${path%/}" --dataroot="$data_dir" --dbtype='mariadb' --dbname="$db_name" --dbuser="$db_name" --dbpass="$db_pwd" --adminuser="$admin" --adminpass="$password" --adminemail="$email" --fullname="$site_name" --shortname="$site_name" --non-interactive --agree-license
 
 ynh_store_file_checksum "$install_dir/config.php"
 
@@ -62,17 +74,7 @@ chown "$app:$app" "$install_dir/config.php"
 #=================================================
 ynh_script_progression "Activate LDAP support..."
 
-ynh_psql_db_shell <<< "UPDATE public.mdl_config SET value='ldap,email' WHERE name='auth';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='ldap://127.0.0.1/' WHERE plugin='auth_ldap' AND name='host_url';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='uid' WHERE plugin='auth_ldap' AND name='user_attribute';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='ou=users,dc=yunohost,dc=org' WHERE plugin='auth_ldap' AND name='contexts';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='givenName' WHERE plugin='auth_ldap' AND name='field_map_firstname';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='sn' WHERE plugin='auth_ldap' AND name='field_map_lastname';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='mail' WHERE plugin='auth_ldap' AND name='field_map_email';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='onlogin' WHERE plugin='auth_ldap' AND (name='field_updatelocal_firstname' OR name='field_updatelocal_lastname' OR name='field_updatelocal_email');"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='locked' WHERE plugin='auth_ldap' AND (name='field_lock_firstname' OR name='field_lock_lastname' OR name='field_lock_email');"
-
-ynh_psql_db_shell <<< "UPDATE public.mdl_user SET auth='ldap' WHERE username='$admin';"
+_moodle_configure_ldap
 
 env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     php${php_version} "$install_dir/admin/cli/purge_caches.php"

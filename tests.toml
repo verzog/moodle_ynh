@@ -19,4 +19,6 @@ test_format = 1.0
     # Commits to test upgrade from
     # -------------------------------
 
+    # 5.1.2~ynh1 is a PostgreSQL-based release, so this upgrade path also
+    # exercises the automatic PostgreSQL -> MariaDB migration in scripts/upgrade.
     test_upgrade_from.4470082.name = "Upgrade from 5.1.2~ynh1"

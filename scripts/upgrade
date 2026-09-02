@@ -4,6 +4,7 @@
 # IMPORT GENERIC HELPERS
 #=================================================
 
+source _common.sh
 source /usr/share/yunohost/helpers
 
 #=================================================
@@ -23,28 +24,98 @@ fi
 
 ynh_app_setting_set_default --key=site_name --value="YunoHost"
 
+# Instances installed before the MariaDB switch have no "database" setting and
+# are still running on PostgreSQL. Default them to postgresql so the migration
+# block below knows they still need to be moved to MariaDB.
+ynh_app_setting_set_default --key=database --value="postgresql"
+
 #=================================================
 # CHECK SYSTEM REQUIREMENTS
 #=================================================
 ynh_script_progression "Checking system requirements..."
 
-# Moodle version/PostgreSQL compatibility matrix:
-#   Moodle 4.x / 5.0 / 5.1 — requires PostgreSQL 13+
-#   Moodle 5.2+             — requires PostgreSQL 16+
-# YunoHost does not support in-place PostgreSQL major version upgrades,
-# so we abort early with a clear message rather than failing mid-upgrade.
-pg_version=$(sudo --login --user=postgres psql -At -c "SELECT current_setting('server_version_num')::int / 10000;")
-new_moodle_version=$(grep '^version' "$YNH_APP_BASEDIR/manifest.toml" | grep -oE '[0-9]+\.[0-9]+' | head -1)
-new_moodle_major=$(echo "$new_moodle_version" | cut -d. -f1)
-new_moodle_minor=$(echo "$new_moodle_version" | cut -d. -f2)
-
-required_pg=13
-if [ "$new_moodle_major" -gt 5 ] || { [ "$new_moodle_major" -eq 5 ] && [ "$new_moodle_minor" -ge 2 ]; }; then
-    required_pg=16
+# The package now uses MariaDB (the migration below moves any legacy PostgreSQL
+# instance onto it), so ensure MariaDB is recent enough for this Moodle release.
+# Moodle 4.1+ / 5.x require MariaDB >= 10.6.7.
+required_maria="10.6.7"
+maria_version=$(mysql -B <<< "SELECT VERSION();" | tail -n1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+if [ -z "$maria_version" ] || [ "$(printf '%s\n%s\n' "$required_maria" "$maria_version" | sort -V | head -n1)" != "$required_maria" ]; then
+    ynh_die "This Moodle version requires MariaDB ${required_maria}+, but this server runs MariaDB ${maria_version:-unknown}."
 fi
 
-if [ "$pg_version" -lt "$required_pg" ]; then
-    ynh_die "Moodle ${new_moodle_version} requires PostgreSQL ${required_pg}+, but this server is running PostgreSQL ${pg_version}. Upgrade PostgreSQL before upgrading Moodle, or stay on a Moodle version compatible with PostgreSQL ${pg_version}."
+#=================================================
+# MIGRATE THE DATABASE FROM POSTGRESQL TO MARIADB
+#=================================================
+
+# One-time, in-place migration for instances installed before the MariaDB
+# switch. It runs while the *old* Moodle code and PostgreSQL config.php are still
+# in place (before ynh_setup_source below), so Moodle bootstraps consistently
+# against PostgreSQL and the data is copied 1:1 into the MariaDB database that
+# the "database" resource has already provisioned.
+#
+# Fail-safe: if anything goes wrong the script aborts (ynh_abort_if_errors)
+# before config.php is switched or the PostgreSQL database is dropped, leaving a
+# fully working PostgreSQL instance behind. A safety dump is also kept in the
+# (backed-up) data directory.
+#
+# NOTE: this migration path exercises Moodle's tool_dbtransfer internals via
+# conf/dbtransfer_cli.php and should be validated on a staging instance before
+# being relied upon in production (see doc/migration-spike/MIGRATION_SPIKE.md).
+if [ "$database" == "postgresql" ] && ynh_psql_database_exists "$db_name"; then
+    ynh_script_progression "Migrating the database from PostgreSQL to MariaDB..."
+
+    # Safety net: keep a PostgreSQL dump in the data dir (included in backups).
+    ynh_psql_dump_db "$db_name" > "$data_dir/pre-mariadb-migration.pgsql.sql"
+
+    # Reset the target to a clean, empty utf8mb4 database. The resource created
+    # it with the server default charset, and dbtransfer refuses a non-empty
+    # target, so recreating it here also makes a retried migration idempotent.
+    # Database-level grants survive a DROP/CREATE of the same name, so db_user
+    # keeps its privileges.
+    ynh_mysql_db_shell "mysql" <<< "DROP DATABASE IF EXISTS \`$db_name\`; CREATE DATABASE \`$db_name\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+    # Put the site in maintenance mode during the transfer (old code, still on
+    # PostgreSQL).
+    php${php_version} "$install_dir/admin/cli/maintenance.php" --enable
+
+    # Drive Moodle's tool_dbtransfer to copy PostgreSQL -> MariaDB. The target
+    # user/password already match db_user/db_pwd (reused by the resource).
+    cp -f "$YNH_APP_BASEDIR/conf/dbtransfer_cli.php" "$install_dir/dbtransfer_cli.php"
+    php${php_version} "$install_dir/dbtransfer_cli.php" \
+        --configphp="$install_dir/config.php" \
+        --target-dbtype="mariadb" \
+        --target-dbhost="localhost" \
+        --target-dbname="$db_name" \
+        --target-dbuser="$db_user" \
+        --target-dbpass="$db_pwd" \
+        --target-prefix="mdl_"
+    ynh_safe_rm "$install_dir/dbtransfer_cli.php"
+
+    # Verify the MariaDB database now holds Moodle tables before switching over.
+    table_count=$(ynh_mysql_db_shell "$db_name" <<< "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$db_name' AND table_name LIKE 'mdl\_%';" | tail -n1)
+    if [ -z "$table_count" ] || [ "$table_count" -lt 1 ]; then
+        ynh_die "Database migration to MariaDB failed: no Moodle tables found in the MariaDB database. The site is unchanged and still uses PostgreSQL."
+    fi
+
+    # Point Moodle at MariaDB by regenerating config.php from the template.
+    if [ "${path:-/}" == "/" ]; then
+        ynh_config_add --template="config-domain.php" --destination="$install_dir/config.php"
+    else
+        ynh_config_add --template="config-path.php" --destination="$install_dir/config.php"
+    fi
+    ynh_store_file_checksum "$install_dir/config.php"
+    chmod 600 "$install_dir/config.php"
+    chown "$app:$app" "$install_dir/config.php"
+
+    # Drop the now-migrated PostgreSQL database and user. The safety dump above
+    # and the pre-upgrade backup still hold the PostgreSQL data.
+    ynh_psql_drop_db "$db_name"
+    ynh_psql_user_exists "$db_user" && ynh_psql_drop_user "$db_user" || true
+
+    # Record MariaDB as the backend so later runs skip this block and APT can
+    # autoremove PostgreSQL on the next upgrade.
+    database="mariadb"
+    ynh_app_setting_set --key=database --value="mariadb"
 fi
 
 #=================================================
@@ -71,17 +142,7 @@ ynh_config_add --template="cron" --destination="/etc/cron.d/$app"
 #=================================================
 ynh_script_progression "Activate LDAP support..."
 
-ynh_psql_db_shell <<< "UPDATE public.mdl_config SET value='ldap,email' WHERE name='auth';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='ldap://127.0.0.1/' WHERE plugin='auth_ldap' AND name='host_url';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='uid' WHERE plugin='auth_ldap' AND name='user_attribute';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='ou=users,dc=yunohost,dc=org' WHERE plugin='auth_ldap' AND name='contexts';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='givenName' WHERE plugin='auth_ldap' AND name='field_map_firstname';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='sn' WHERE plugin='auth_ldap' AND name='field_map_lastname';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='mail' WHERE plugin='auth_ldap' AND name='field_map_email';"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='onlogin' WHERE plugin='auth_ldap' AND (name='field_updatelocal_firstname' OR name='field_updatelocal_lastname' OR name='field_updatelocal_email');"
-ynh_psql_db_shell <<< "UPDATE public.mdl_config_plugins SET value='locked' WHERE plugin='auth_ldap' AND (name='field_lock_firstname' OR name='field_lock_lastname' OR name='field_lock_email');"
-
-ynh_psql_db_shell <<< "UPDATE public.mdl_user SET auth='ldap' WHERE username='$admin';"
+_moodle_configure_ldap
 
 #=================================================
 # RUN DATABASE MIGRATIONS
@@ -93,6 +154,10 @@ env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/
 
 env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     php${php_version} "$install_dir/admin/cli/purge_caches.php"
+
+# Lift the maintenance mode that the PostgreSQL -> MariaDB migration may have
+# enabled. Harmless (and idempotent) when it was never turned on.
+php${php_version} "$install_dir/admin/cli/maintenance.php" --disable
 
 #=================================================
 # END OF SCRIPT
