@@ -61,22 +61,63 @@ fi
 # NOTE: this migration path exercises Moodle's tool_dbtransfer internals via
 # conf/dbtransfer_cli.php and should be validated on a staging instance before
 # being relied upon in production (see doc/migration-spike/MIGRATION_SPIKE.md).
-if [ "$database" == "postgresql" ] && ynh_psql_database_exists "$db_name"; then
+#
+# Resumability: config.php is the source of truth for the *actual* backend
+# in use. We only run the (destructive) target reset + transfer while config.php
+# still points at PostgreSQL. If a previous run was interrupted after switching
+# config.php to MariaDB but before recording database=mariadb, we take the
+# reconcile branch instead of re-running the transfer, so the already-populated
+# MariaDB database is never wiped.
+
+# Only disabled again at the end of the script if *we* enabled it here, so an
+# administrator's pre-existing maintenance mode is preserved.
+maintenance_toggled_by_upgrade=0
+
+if [ "$database" == "postgresql" ] && grep -qE "dbtype[[:space:]]*=[[:space:]]*'mariadb'" "$install_dir/config.php" 2>/dev/null; then
+    # A previous interrupted run already transferred the data and switched
+    # config.php to MariaDB. Finish the bookkeeping without touching the
+    # (already-populated) MariaDB database.
+    ynh_script_progression "Finalizing a previously interrupted PostgreSQL -> MariaDB migration..."
+
+    if ynh_psql_database_exists "$db_name"; then
+        ynh_psql_dump_db "$db_name" > "$data_dir/pre-mariadb-migration.pgsql.sql"
+        ynh_psql_drop_db "$db_name"
+    fi
+    ynh_psql_user_exists "$db_user" && ynh_psql_drop_user "$db_user" || true
+
+    database="mariadb"
+    ynh_app_setting_set --key=database --value="mariadb"
+
+elif [ "$database" == "postgresql" ] && ynh_psql_database_exists "$db_name"; then
     ynh_script_progression "Migrating the database from PostgreSQL to MariaDB..."
 
     # Safety net: keep a PostgreSQL dump in the data dir (included in backups).
     ynh_psql_dump_db "$db_name" > "$data_dir/pre-mariadb-migration.pgsql.sql"
 
+    # Suspend the Moodle cron job for the duration of the copy. Maintenance mode
+    # only blocks web requests; the CLI cron (conf/cron) could still write to
+    # PostgreSQL mid-transfer and yield a cross-table-inconsistent MariaDB
+    # snapshot. The cron file is regenerated below (REAPPLY SYSTEM CONFIGURATIONS).
+    ynh_safe_rm "/etc/cron.d/$app"
+
+    # Put the site in maintenance mode during the transfer (old code, still on
+    # PostgreSQL). Record whether it was already on (either the maintenance_enabled
+    # config flag or the legacy climaintenance.html file) so we don't clobber an
+    # administrator's pre-existing maintenance state at the end of the script.
+    maintenance_prior=$(sudo --login --user=postgres psql -tAc "SELECT value FROM public.mdl_config WHERE name='maintenance_enabled'" "$db_name" 2>/dev/null | tr -d '[:space:]')
+    if { [ -z "$maintenance_prior" ] || [ "$maintenance_prior" == "0" ]; } && [ ! -f "$data_dir/climaintenance.html" ]; then
+        php${php_version} "$install_dir/admin/cli/maintenance.php" --enable
+        maintenance_toggled_by_upgrade=1
+    fi
+
     # Reset the target to a clean, empty utf8mb4 database. The resource created
     # it with the server default charset, and dbtransfer refuses a non-empty
-    # target, so recreating it here also makes a retried migration idempotent.
+    # target, so recreating it here also makes a retried transfer idempotent.
+    # This is safe only because config.php still points at PostgreSQL (checked
+    # above), so the source data lives in PostgreSQL, not here.
     # Database-level grants survive a DROP/CREATE of the same name, so db_user
     # keeps its privileges.
     ynh_mysql_db_shell "mysql" <<< "DROP DATABASE IF EXISTS \`$db_name\`; CREATE DATABASE \`$db_name\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-
-    # Put the site in maintenance mode during the transfer (old code, still on
-    # PostgreSQL).
-    php${php_version} "$install_dir/admin/cli/maintenance.php" --enable
 
     # Drive Moodle's tool_dbtransfer to copy PostgreSQL -> MariaDB. The target
     # user/password already match db_user/db_pwd (reused by the resource).
@@ -97,7 +138,8 @@ if [ "$database" == "postgresql" ] && ynh_psql_database_exists "$db_name"; then
         ynh_die "Database migration to MariaDB failed: no Moodle tables found in the MariaDB database. The site is unchanged and still uses PostgreSQL."
     fi
 
-    # Point Moodle at MariaDB by regenerating config.php from the template.
+    # Point Moodle at MariaDB by regenerating config.php from the template. From
+    # this point a resumed run takes the reconcile branch above (never the reset).
     if [ "${path:-/}" == "/" ]; then
         ynh_config_add --template="config-domain.php" --destination="$install_dir/config.php"
     else
@@ -155,9 +197,12 @@ env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/
 env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     php${php_version} "$install_dir/admin/cli/purge_caches.php"
 
-# Lift the maintenance mode that the PostgreSQL -> MariaDB migration may have
-# enabled. Harmless (and idempotent) when it was never turned on.
-php${php_version} "$install_dir/admin/cli/maintenance.php" --disable
+# Lift maintenance mode only if the migration block above turned it on, so an
+# administrator who intentionally enabled maintenance before upgrading (or a
+# non-migration upgrade that never touched it) keeps their chosen state.
+if [ "${maintenance_toggled_by_upgrade:-0}" == "1" ]; then
+    php${php_version} "$install_dir/admin/cli/maintenance.php" --disable
+fi
 
 #=================================================
 # END OF SCRIPT

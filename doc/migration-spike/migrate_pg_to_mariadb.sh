@@ -108,16 +108,25 @@ SQL
 echo "    PostgreSQL mdl_ tables : $PG_TABLES"
 echo "    MariaDB    mdl_ tables : $MY_TABLES"
 
+ROW_MISMATCH=0
 for t in mdl_user mdl_course mdl_config; do
     PG_ROWS="$(sudo --login --user=postgres psql -tAc "SELECT count(*) FROM public.$t" "$DB_NAME" 2>/dev/null || echo '?')"
     MY_ROWS="$(mysql -B -N "$TEST_DB" <<< "SELECT COUNT(*) FROM $t;" 2>/dev/null || echo '?')"
-    printf "    %-14s  pg=%s  mariadb=%s\n" "$t" "$PG_ROWS" "$MY_ROWS"
+    FLAG=""
+    if [ "$PG_ROWS" != "$MY_ROWS" ]; then
+        ROW_MISMATCH=1
+        FLAG="  <-- MISMATCH"
+    fi
+    printf "    %-14s  pg=%s  mariadb=%s%s\n" "$t" "$PG_ROWS" "$MY_ROWS" "$FLAG"
 done
 
 echo
-if [ "$PG_TABLES" = "$MY_TABLES" ] && [ "$MY_TABLES" -gt 0 ]; then
-    echo "RESULT: table counts match — transfer looks structurally complete."
+if [ "$PG_TABLES" = "$MY_TABLES" ] && [ "$MY_TABLES" -gt 0 ] && [ "$ROW_MISMATCH" -eq 0 ]; then
+    echo "RESULT: table counts and sampled row counts match — transfer looks complete."
+    RESULT=0
 else
-    echo "RESULT: table counts DIFFER — inspect the transfer output above."
+    echo "RESULT: DIFFERENCES found (table or row counts) — inspect the transfer output above."
+    RESULT=1
 fi
 echo "(The throwaway MariaDB database will now be dropped; the live site was not modified.)"
+exit "$RESULT"
