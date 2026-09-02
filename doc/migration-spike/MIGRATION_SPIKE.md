@@ -145,8 +145,20 @@ Table local_xxx_yyy: table is not expected
 These are **orphaned tables** — left behind by a plugin whose code was deleted
 from disk instead of being uninstalled through Moodle. The migration (and this
 evaluator) cannot proceed until they are resolved. This is enforced by
-`tool_dbtransfer`, not by this package, and the real upgrade fails safe on it
-(aborts before switching `config.php` or dropping PostgreSQL).
+`tool_dbtransfer`, not by this package.
+
+`scripts/upgrade` now checks for this **up front**, before it dumps, enables
+maintenance, or copies anything: it runs Moodle's `admin/cli/check_database_schema.php`
+(same "not expected" logic `tool_dbtransfer` uses) and, if any table/column is
+not declared by an installed plugin, aborts immediately with the offending list
+and the two remediation options below — so you get a clear checklist instead of
+a mid-migration failure. (Even if that check were bypassed, the migration still
+fails safe, aborting before `config.php` is switched or PostgreSQL is dropped.)
+
+**A needed plugin is never lost by the migration — only by having its code
+missing.** A plugin you actually run has its code installed, so its tables are
+declared and migrate with their data. The only tables that block the migration
+are ones no installed code claims; for those you choose per case:
 
 Resolve it before migrating:
 
