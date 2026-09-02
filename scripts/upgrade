@@ -198,6 +198,11 @@ ynh_script_progression "Upgrading source files..."
 # Download, check integrity, uncompress and patch the source from manifest.toml
 ynh_setup_source --dest_dir="$install_dir" --full_replace --keep="config.php"
 
+# Declare the Moodle 5.1+ router as configured for instances whose config.php
+# predates it (kept across the upgrade). Idempotent: a config.php regenerated
+# from the template during migration already carries the flag.
+_moodle_ensure_routerconfigured
+
 #=================================================
 # REAPPLY SYSTEM CONFIGURATIONS
 #=================================================

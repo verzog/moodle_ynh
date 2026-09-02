@@ -24,6 +24,10 @@ $CFG->admin = 'admin';
 
 $CFG->directorypermissions = 02777;
 
+// Moodle 5.1+ front-controller router. The NGINX config routes non-file
+// requests to r.php (try_files ... /r.php), so declare the router configured.
+$CFG->routerconfigured = true;
+
 require_once(__DIR__ . '/lib/setup.php'); // Do not edit
 
 // There is no php closing tag in this file,
