@@ -7,7 +7,7 @@ name = "Moodle"
 description.en = "Online learning platform"
 description.fr = "Plateforme d'apprentissage en ligne"
 
-version = "5.2.2~ynh2"
+version = "5.2.2~ynh3"
 
 maintainers = []
 
@@ -27,7 +27,7 @@ multi_instance = true
 ldap = true
 sso = true
 
-disk = "50M"
+disk = "800M"
 ram.build = "2000M"
 ram.runtime = "50M"
 

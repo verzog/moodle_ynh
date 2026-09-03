@@ -38,6 +38,12 @@ ynh_script_progression "Setting up source files..."
 # Download, check integrity, uncompress and patch the source from manifest.toml
 ynh_setup_source --dest_dir="$install_dir"
 
+# Install Moodle's Composer runtime dependencies (vendor/), which the source
+# tarball does not ship. Must run before admin/cli/install.php, which bootstraps
+# Moodle and needs those libraries.
+ynh_script_progression "Installing Composer dependencies..."
+_moodle_composer_install
+
 #=================================================
 # SYSTEM CONFIGURATION
 #=================================================

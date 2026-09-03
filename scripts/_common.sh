@@ -65,3 +65,24 @@ _moodle_ensure_routerconfigured() {
 
     ynh_store_file_checksum "$config"
 }
+
+# Composer version used to install Moodle's runtime dependencies.
+composer_version="2.8.9"
+
+# Install Moodle's Composer runtime dependencies into vendor/.
+#
+# Since Moodle 5.1/5.2 many runtime libraries (guzzle, phpmailer, adodb,
+# htmlpurifier, slim, aws-sdk, ...) ship only via Composer. The GitHub source
+# tarball gitignores vendor/, so it must be (re)populated after every
+# ynh_setup_source (which --full_replace otherwise wipes it). This is exactly
+# what Moodle's "Composer installed data" environment check asks for
+# (composer install --no-dev --classmap-authoritative). composer.json and
+# composer.lock live at the install_dir root (the web code is under public/).
+#
+# Requires: $install_dir, $php_version. Runs as the app user (ynh_composer_exec).
+_moodle_composer_install() {
+    ynh_composer_install
+    ynh_composer_exec install --no-dev --classmap-authoritative --prefer-dist --no-progress
+    # The phar isn't needed at runtime (and isn't under public/, so never served).
+    ynh_safe_rm "$install_dir/composer.phar"
+}
