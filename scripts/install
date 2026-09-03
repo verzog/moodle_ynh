@@ -64,6 +64,10 @@ ynh_mysql_db_shell "$db_name" <<< "ALTER DATABASE \`$db_name\` CHARACTER SET utf
 
 php${php_version} -d max_input_vars=5000 "$install_dir/admin/cli/install.php" --wwwroot="https://${domain}${path%/}" --dataroot="$data_dir" --dbtype='mariadb' --dbname="$db_name" --dbuser="$db_name" --dbpass="$db_pwd" --adminuser="$admin" --adminpass="$password" --adminemail="$email" --fullname="$site_name" --shortname="$site_name" --non-interactive --agree-license
 
+# Declare the Moodle 5.1+ router as configured (config.php from the installer
+# does not carry the flag; the NGINX config provides the r.php fallback).
+_moodle_ensure_routerconfigured
+
 ynh_store_file_checksum "$install_dir/config.php"
 
 chmod 600 "$install_dir/config.php"
