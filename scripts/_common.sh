@@ -66,32 +66,11 @@ _moodle_ensure_routerconfigured() {
     ynh_store_file_checksum "$config"
 }
 
-# Read the numeric core version ($version) declared by a Moodle codebase.
-#
-# Moodle's core version.php sets `$version = YYYYMMDDXX.XX;` (a date-based,
-# monotonically increasing number). Since Moodle 5.1 the web code — and thus
-# version.php — lives under public/; older layouts keep it at the root. Echoes
-# the number (e.g. 2026042000.00) on success, or nothing (return 1) if no
-# version.php is found.
-#
-# Requires: a path to a Moodle installation root (the dir containing config.php).
-_moodle_code_version() {
-    local root="$1" vfile=""
-    if [ -f "$root/public/version.php" ]; then
-        vfile="$root/public/version.php"
-    elif [ -f "$root/version.php" ]; then
-        vfile="$root/version.php"
-    else
-        return 1
-    fi
-    grep -oE '^[[:space:]]*\$version[[:space:]]*=[[:space:]]*[0-9]+(\.[0-9]+)?' "$vfile" \
-        | grep -oE '[0-9]+(\.[0-9]+)?' | head -n1
-}
-
 # Read the human-readable release string ($release) declared by a Moodle
 # codebase (e.g. "5.2.2 (Build: 20260420)"). Echoes it on success, nothing
-# otherwise. Only used to make messages friendlier; the version compare uses
-# _moodle_code_version. Requires: a path to a Moodle installation root.
+# otherwise. Only used to make the downgrade-guard message friendlier; the
+# authoritative per-component compare is done by conf/downgrade_check_cli.php.
+# Requires: a path to a Moodle installation root.
 _moodle_code_release() {
     local root="$1" vfile=""
     if [ -f "$root/public/version.php" ]; then

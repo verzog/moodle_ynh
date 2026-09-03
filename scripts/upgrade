@@ -98,28 +98,50 @@ elif [ "$database" == "postgresql" ] && ynh_psql_database_exists "$db_name"; the
     # Pre-flight downgrade guard. The migration below is slow (the transfer can
     # take an hour on a large site) and its final step drops the PostgreSQL
     # database. Moodle refuses to run against an older codebase than the one that
-    # last wrote the database (cannotdowngrade). Because Moodle version numbers
-    # are date-based (YYYYMMDDXX), a stable-branch point release (e.g. 5.1.6,
-    # published later) can be NEWER than a higher-numbered release (5.2.2), so a
-    # "5.1.x -> 5.2.x" move can still be a downgrade. Detect that here, up front,
-    # by comparing the installed code's numeric $version against the version this
-    # package would install (extracted to a throwaway dir so it always tracks the
-    # manifest). This aborts a doomed upgrade in well under a minute — with the
-    # PostgreSQL database fully intact — instead of failing an hour in, after the
-    # data has already been moved. Nothing destructive has happened yet.
-    current_version=$(_moodle_code_version "$install_dir" || true)
+    # last wrote the database (cannotdowngrade), and this is checked PER
+    # COMPONENT: any single plugin whose stored version is newer than the target
+    # code's copy blocks the whole upgrade. A common trigger is a third-party
+    # plugin later absorbed into core with a lower version number (e.g. the
+    # standalone aiprovider_gemini add-on vs. the copy bundled since Moodle 5.2),
+    # so a core-version comparison alone is not enough.
+    #
+    # conf/downgrade_check_cli.php reads every installed component version from
+    # the still-active PostgreSQL database and compares it against the target
+    # code (extracted to a throwaway dir so it always tracks the manifest). This
+    # aborts a doomed upgrade in under a minute — with the PostgreSQL database
+    # fully intact — instead of failing an hour in, after the data has moved, and
+    # names exactly which plugins to resolve. Nothing destructive has run yet.
     current_release=$(_moodle_code_release "$install_dir" || true)
-    target_check_dir="$(mktemp -d "${install_dir%/}.downgrade-check.XXXXXX")"
-    ynh_setup_source --dest_dir="$target_check_dir"
-    target_version=$(_moodle_code_version "$target_check_dir" || true)
-    target_release=$(_moodle_code_release "$target_check_dir" || true)
-    ynh_safe_rm "$target_check_dir"
-    if [ -n "$current_version" ] && [ -n "$target_version" ] \
-        && [ "$current_version" != "$target_version" ] \
-        && [ "$(printf '%s\n%s\n' "$current_version" "$target_version" | sort -V | tail -n1)" == "$current_version" ]; then
-        ynh_die "Cannot upgrade: the installed Moodle (${current_release:-$current_version}) is newer than the version this package installs (${target_release:-$target_version}).
+    downgrade_check_dir="$(mktemp -d "${install_dir%/}.downgrade-check.XXXXXX")"
+    ynh_setup_source --dest_dir="$downgrade_check_dir"
+    target_release=$(_moodle_code_release "$downgrade_check_dir" || true)
+    downgrade_report=$(php${php_version} "$YNH_APP_BASEDIR/conf/downgrade_check_cli.php" \
+        --db-type="pgsql" \
+        --db-host="localhost" \
+        --db-name="$db_name" \
+        --db-user="$db_user" \
+        --db-pass="$db_pwd" \
+        --db-prefix="mdl_" \
+        --targetroot="$downgrade_check_dir" 2>&1) && downgrade_rc=0 || downgrade_rc=$?
+    ynh_safe_rm "$downgrade_check_dir"
+    if [ "$downgrade_rc" == "2" ]; then
+        ynh_die "Cannot upgrade: the installed Moodle (${current_release:-current}) is newer than the version this package installs (${target_release:-target}).
 Moodle refuses to run against older code (cannotdowngrade), so the upgrade — and the PostgreSQL -> MariaDB migration it triggers — would fail after destructively moving your data. Nothing has been changed; your site is untouched and still running on PostgreSQL.
-This usually means the site is on a Moodle stable branch that was published after this package's target release. Wait until this package targets a Moodle version at least as recent as ${current_release:-$current_version}, then re-run the upgrade."
+
+${downgrade_report}
+
+How to resolve:
+ - If a listed item is a third-party plugin you no longer need (commonly an add-on later bundled into Moodle core with a lower version number, such as aiprovider_gemini), uninstall it and re-run the upgrade:
+     php${php_version} ${install_dir}/admin/cli/uninstall_plugins.php --show-missing
+     php${php_version} ${install_dir}/admin/cli/uninstall_plugins.php --plugins=<component> --run
+ - Otherwise, wait until this package targets a Moodle version at least as recent as ${current_release:-your installed one}, then re-run the upgrade.
+See doc/migration-spike/MIGRATION_SPIKE.md for details."
+    elif [ "$downgrade_rc" != "0" ]; then
+        # The guard is a safety net; if it could not run (e.g. the PDO driver is
+        # unavailable), warn but do not newly block an upgrade that would
+        # otherwise proceed. Moodle's own cannotdowngrade check still applies.
+        ynh_print_warn "Could not run the Moodle downgrade pre-check (exit ${downgrade_rc}); continuing. Details:
+${downgrade_report}"
     fi
 
     # Pre-flight: tool_dbtransfer refuses a database whose schema does not match
