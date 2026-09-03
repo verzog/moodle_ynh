@@ -95,6 +95,33 @@ if [ "$database" == "postgresql" ] && grep -qE "dbtype[[:space:]]*=[[:space:]]*'
 elif [ "$database" == "postgresql" ] && ynh_psql_database_exists "$db_name"; then
     ynh_script_progression "Migrating the database from PostgreSQL to MariaDB..."
 
+    # Pre-flight downgrade guard. The migration below is slow (the transfer can
+    # take an hour on a large site) and its final step drops the PostgreSQL
+    # database. Moodle refuses to run against an older codebase than the one that
+    # last wrote the database (cannotdowngrade). Because Moodle version numbers
+    # are date-based (YYYYMMDDXX), a stable-branch point release (e.g. 5.1.6,
+    # published later) can be NEWER than a higher-numbered release (5.2.2), so a
+    # "5.1.x -> 5.2.x" move can still be a downgrade. Detect that here, up front,
+    # by comparing the installed code's numeric $version against the version this
+    # package would install (extracted to a throwaway dir so it always tracks the
+    # manifest). This aborts a doomed upgrade in well under a minute — with the
+    # PostgreSQL database fully intact — instead of failing an hour in, after the
+    # data has already been moved. Nothing destructive has happened yet.
+    current_version=$(_moodle_code_version "$install_dir" || true)
+    current_release=$(_moodle_code_release "$install_dir" || true)
+    target_check_dir="$(mktemp -d "${install_dir%/}.downgrade-check.XXXXXX")"
+    ynh_setup_source --dest_dir="$target_check_dir"
+    target_version=$(_moodle_code_version "$target_check_dir" || true)
+    target_release=$(_moodle_code_release "$target_check_dir" || true)
+    ynh_safe_rm "$target_check_dir"
+    if [ -n "$current_version" ] && [ -n "$target_version" ] \
+        && [ "$current_version" != "$target_version" ] \
+        && [ "$(printf '%s\n%s\n' "$current_version" "$target_version" | sort -V | tail -n1)" == "$current_version" ]; then
+        ynh_die "Cannot upgrade: the installed Moodle (${current_release:-$current_version}) is newer than the version this package installs (${target_release:-$target_version}).
+Moodle refuses to run against older code (cannotdowngrade), so the upgrade — and the PostgreSQL -> MariaDB migration it triggers — would fail after destructively moving your data. Nothing has been changed; your site is untouched and still running on PostgreSQL.
+This usually means the site is on a Moodle stable branch that was published after this package's target release. Wait until this package targets a Moodle version at least as recent as ${current_release:-$current_version}, then re-run the upgrade."
+    fi
+
     # Pre-flight: tool_dbtransfer refuses a database whose schema does not match
     # the installed plugins' install.xml — most commonly orphaned tables left by
     # a plugin whose code was deleted from disk instead of uninstalled. Detect
