@@ -66,6 +66,24 @@ _moodle_ensure_routerconfigured() {
     ynh_store_file_checksum "$config"
 }
 
+# Read the human-readable release string ($release) declared by a Moodle
+# codebase (e.g. "5.2.2 (Build: 20260420)"). Echoes it on success, nothing
+# otherwise. Only used to make the downgrade-guard message friendlier; the
+# authoritative per-component compare is done by conf/downgrade_check_cli.php.
+# Requires: a path to a Moodle installation root.
+_moodle_code_release() {
+    local root="$1" vfile=""
+    if [ -f "$root/public/version.php" ]; then
+        vfile="$root/public/version.php"
+    elif [ -f "$root/version.php" ]; then
+        vfile="$root/version.php"
+    else
+        return 1
+    fi
+    grep -oE "^[[:space:]]*\\\$release[[:space:]]*=[[:space:]]*'[^']+'" "$vfile" \
+        | sed -E "s/^[^']*'([^']+)'.*/\1/" | head -n1
+}
+
 # Composer version used to install Moodle's runtime dependencies.
 composer_version="2.8.9"
 
