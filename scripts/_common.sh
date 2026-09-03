@@ -44,8 +44,24 @@ _moodle_configure_ldap() {
 _moodle_ensure_routerconfigured() {
     local config="$install_dir/config.php"
     [ -f "$config" ] || return 0
-    if ! grep -q 'routerconfigured' "$config"; then
-        sed -i '/require_once.*lib\/setup\.php/i $CFG->routerconfigured = true;' "$config"
-        ynh_store_file_checksum "$config"
+
+    # Already an active "= true" assignment (not a comment/false)? Nothing to do.
+    if grep -qE '^[[:space:]]*\$CFG->routerconfigured[[:space:]]*=[[:space:]]*true[[:space:]]*;' "$config"; then
+        return 0
     fi
+
+    # We are about to modify config.php. Back up first if it differs from the
+    # stored checksum, so an administrator's customizations aren't silently lost
+    # (and a later change_url can still detect them against the new baseline).
+    ynh_backup_if_checksum_is_different "$config"
+
+    if grep -qE '^[[:space:]]*\$CFG->routerconfigured[[:space:]]*=' "$config"; then
+        # An assignment exists but isn't "true" (e.g. false) — force it to true.
+        sed -i -E 's/^([[:space:]]*\$CFG->routerconfigured[[:space:]]*=[[:space:]]*).*/\1true;/' "$config"
+    else
+        # No assignment at all — insert one before the lib/setup.php require.
+        sed -i '/require_once.*lib\/setup\.php/i $CFG->routerconfigured = true;' "$config"
+    fi
+
+    ynh_store_file_checksum "$config"
 }
