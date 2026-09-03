@@ -7,7 +7,7 @@ name = "Moodle"
 description.en = "Online learning platform"
 description.fr = "Plateforme d'apprentissage en ligne"
 
-version = "5.2.2~ynh4"
+version = "5.2.2~ynh5"
 
 maintainers = []
 
@@ -57,10 +57,29 @@ ram.runtime = "50M"
     [resources.sources]
 
     [resources.sources.main]
-    url = "https://github.com/moodle/moodle/archive/refs/tags/v5.2.2.tar.gz"
-    sha256 = "3943b308080e41b249033c924d8e3dc2c58b39ed7b8030375a151607cc491094"
-    autoupdate.strategy = "latest_github_tag"
-    autoupdate.version_regex = "^v(\\d+\\.\\d+\\.\\d+)$"
+    # Tracking the Moodle 5.2 stable WEEKLY build (MOODLE_502_STABLE, Build:
+    # 20260818) rather than the v5.2.2 tag, to pick up ~4 months of 5.2 security
+    # and bug fixes released after the tag. Pinned to a specific commit tarball
+    # (reproducible) instead of the moving branch ref, so the sha256 stays valid.
+    #
+    # Autoupdate is intentionally DISABLED while we track the branch: the
+    # latest_github_tag strategy would pull us back to the v5.2.2 tag (older than
+    # this build) or forward to a 5.3 tag (which needs MariaDB 11.4 / Debian 13).
+    # The repo's .github/workflows/update-moodle.yml daily updater also detects a
+    # commit-pinned url and pauses itself until the url is repointed at a tag.
+    # TO RETURN TO TAGGED RELEASES once Moodle publishes the next 5.2 point
+    # release (v5.2.3): set version to "5.2.3~ynh1", point url back at
+    # refs/tags/v5.2.3.tar.gz with its sha256, and uncomment the two autoupdate
+    # lines below. The version_regex below is pinned to the 5.2 series so
+    # autoupdate never jumps to a new Moodle series on its own (a new series is a
+    # deliberate decision — see notify-moodle-series.yml); when intentionally
+    # moving to a later series, bump version and change "5\\.2" accordingly. To
+    # advance the weekly in the meantime, repoint url/sha256 at a newer
+    # MOODLE_502_STABLE commit and bump the ~ynhN revision.
+    url = "https://github.com/moodle/moodle/archive/b07dd04b40ece3b2d43b2e6ec1213db2a997df7f.tar.gz"
+    sha256 = "f2e44ed4ec12857bd42249f6baca6a8950655fd1c4ac7bef8b5a81db72ae2295"
+    # autoupdate.strategy = "latest_github_tag"
+    # autoupdate.version_regex = "^v(5\\.2\\.\\d+)$"
 
     [resources.system_user]
 

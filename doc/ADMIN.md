@@ -2,6 +2,29 @@
 
 This package uses two GitHub Actions workflows to manage Moodle updates.
 
+### Current source: 5.2 stable weekly (tag autoupdate paused)
+
+The package currently tracks the **Moodle 5.2 stable weekly build**
+(`MOODLE_502_STABLE`), pinned to a specific commit in `manifest.toml`, rather
+than the `v5.2.2` tag. This picks up the 5.2 branch's security and bug fixes
+that are released between point releases. Because a moving branch has no stable
+tag, the `latest_github_tag` autoupdate strategy is **temporarily disabled** (it
+would otherwise pull back to the older `v5.2.2` tag, or jump to a 5.3 tag that
+requires MariaDB 11.4 / Debian 13).
+
+While the source is pinned to a commit, the daily patch updater
+(`.github/workflows/update-moodle.yml`) detects the commit-pinned URL and
+**pauses itself**, so it cannot open a broken PR with a mismatched URL/checksum.
+
+When Moodle publishes the next 5.2 point release (`v5.2.3`), the package returns
+to reproducible, auto-updated tagged releases: set `version` to `5.2.3~ynh1`,
+point the source URL back at `refs/tags/v5.2.3.tar.gz` with its SHA256, and
+re-enable the two `autoupdate.*` lines in `manifest.toml` (see the comment
+there). The re-enabled `version_regex` is pinned to the **5.2 series** so
+autoupdate never jumps to a new Moodle series (5.3+) on its own — moving series
+stays a deliberate decision (see the series-notification workflow below). Once
+the URL is back on a tag, the daily patch updater resumes automatically.
+
 ### Patch releases (automatic)
 
 A workflow runs daily at 06:00 UTC and checks for new patch releases within the currently installed major.minor series (e.g. `5.1.3` → `5.1.4`). If a newer patch is found it opens a pull request on this repository with the updated version, download URL, and SHA256.

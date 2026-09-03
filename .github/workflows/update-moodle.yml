@@ -18,8 +18,26 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Skip while the source is pinned to a commit (weekly build)
+        id: guard
+        run: |
+          # The tag-based auto-updater only understands tag tarball URLs
+          # (archive/refs/tags/vX.Y.Z.tar.gz). When manifest.toml is temporarily
+          # pinned to a specific commit tarball to track a stable weekly build,
+          # the URL substitution below would not match, producing a PR whose
+          # version/sha256 are updated but whose URL still points at the old
+          # commit — a checksum mismatch. Pause here while pinned; the updater
+          # resumes automatically once the URL is repointed at a tag.
+          if grep -qE '^[[:space:]]*url = "https://github\.com/moodle/moodle/archive/refs/tags/' manifest.toml; then
+            echo "pinned=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "pinned=true" >> "$GITHUB_OUTPUT"
+            echo "Source is pinned to a specific commit (weekly build); tag-based auto-update is paused."
+          fi
+
       - name: Fetch latest stable Moodle tag
         id: latest
+        if: steps.guard.outputs.pinned == 'false'
         run: |
           # Only pick up patch releases within the same major.minor series as
           # currently installed. A minor or major bump (e.g. 5.1 -> 5.2) may
@@ -36,6 +54,7 @@ jobs:
 
       - name: Check if update is needed
         id: check
+        if: steps.guard.outputs.pinned == 'false'
         run: |
           CURRENT=$(grep '^version' manifest.toml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           LATEST="${{ steps.latest.outputs.version }}"
