@@ -198,6 +198,12 @@ ynh_script_progression "Upgrading source files..."
 # Download, check integrity, uncompress and patch the source from manifest.toml
 ynh_setup_source --dest_dir="$install_dir" --full_replace --keep="config.php"
 
+# Reinstall Moodle's Composer runtime dependencies (vendor/), which the source
+# tarball does not ship and --full_replace has just wiped. Must run before
+# admin/cli/upgrade.php below.
+ynh_script_progression "Installing Composer dependencies..."
+_moodle_composer_install
+
 # Declare the Moodle 5.1+ router as configured for instances whose config.php
 # predates it (kept across the upgrade). Idempotent: a config.php regenerated
 # from the template during migration already carries the flag.
