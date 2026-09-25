@@ -44,11 +44,21 @@ jobs:
           # require a PostgreSQL upgrade and must be a deliberate decision —
           # update the version in manifest.toml manually to move to a new series.
           CURRENT_SERIES=$(grep '^version' manifest.toml | grep -oE '[0-9]+\.[0-9]+')
-          LATEST=$(curl -s https://api.github.com/repos/moodle/moodle/tags \
+          # per_page=100: the default page (30 tags) is mostly beta/RC/weekly
+          # tags, so the current series' release tags can be missing from it.
+          # --fail and the empty check below stop the job instead of opening a
+          # PR with a blank version, URL and a checksum of GitHub's error page.
+          LATEST=$(curl -sS --fail \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/moodle/moodle/tags?per_page=100" \
             | jq -r '.[].name' \
             | grep -E "^v${CURRENT_SERIES//./\\.}\\.[0-9]+$" \
             | sort -V \
-            | tail -1)
+            | tail -1 || true)
+          if [ -z "$CURRENT_SERIES" ] || [ -z "$LATEST" ]; then
+            echo "::error::Could not determine the latest v${CURRENT_SERIES}.x tag; not opening a PR."
+            exit 1
+          fi
           echo "tag=$LATEST" >> "$GITHUB_OUTPUT"
           echo "version=${LATEST#v}" >> "$GITHUB_OUTPUT"
 
@@ -75,7 +85,13 @@ jobs:
           # Download to a temp path outside the working tree so the tarball
           # is never picked up by the create-pull-request commit.
           TARBALL="$(mktemp)"
-          curl -sL "$URL" -o "$TARBALL"
+          # --fail: a 404 must abort, not produce a checksum of the error page.
+          curl -sSL --fail "$URL" -o "$TARBALL"
+          # A real Moodle tarball is tens of MB; reject anything implausibly small.
+          if [ "$(stat -c %s "$TARBALL")" -lt 10000000 ]; then
+            echo "::error::Downloaded tarball for ${TAG} is too small; not opening a PR."
+            exit 1
+          fi
           SHA=$(sha256sum "$TARBALL" | cut -d' ' -f1)
           rm -f "$TARBALL"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
